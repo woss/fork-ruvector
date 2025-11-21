@@ -3079,77 +3079,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "router-cli"
-version = "0.1.1"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "colored",
- "rand 0.8.5",
- "router-core",
- "serde_json",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "router-core"
-version = "0.1.1"
-dependencies = [
- "anyhow",
- "bincode 2.0.1",
- "chrono",
- "criterion",
- "crossbeam",
- "memmap2",
- "ndarray 0.15.6",
- "parking_lot 0.12.5",
- "proptest",
- "rand 0.8.5",
- "rayon",
- "redb",
- "rkyv",
- "serde",
- "serde_json",
- "simsimd",
- "tempfile",
- "thiserror 2.0.17",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "router-ffi"
-version = "0.1.1"
-dependencies = [
- "anyhow",
- "chrono",
- "napi",
- "napi-build",
- "napi-derive",
- "router-core",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "router-wasm"
-version = "0.1.1"
-dependencies = [
- "js-sys",
- "router-core",
- "serde",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-test",
- "web-sys",
-]
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3316,6 +3245,77 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "ruvector-router-cli"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "colored",
+ "rand 0.8.5",
+ "ruvector-router-core",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "ruvector-router-core"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "bincode 2.0.1",
+ "chrono",
+ "criterion",
+ "crossbeam",
+ "memmap2",
+ "ndarray 0.15.6",
+ "parking_lot 0.12.5",
+ "proptest",
+ "rand 0.8.5",
+ "rayon",
+ "redb",
+ "rkyv",
+ "serde",
+ "serde_json",
+ "simsimd",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "ruvector-router-ffi"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "napi",
+ "napi-build",
+ "napi-derive",
+ "ruvector-router-core",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "ruvector-router-wasm"
+version = "0.1.1"
+dependencies = [
+ "js-sys",
+ "ruvector-router-core",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "web-sys",
 ]
 
 [[package]]

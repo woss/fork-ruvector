@@ -1,17 +1,17 @@
 [package]
-name = "router-ffi"
+name = "ruvector-router-ffi"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "NAPI-RS bindings for router-core vector database"
+description = "NAPI-RS bindings for ruvector-router-core vector database"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-router-core = { version = "0.1.1", path = "../router-core" }
+ruvector-router-core = { version = "0.1.1", path = "../ruvector-router-core" }
 
 # NAPI-RS dependencies
 napi = { workspace = true }

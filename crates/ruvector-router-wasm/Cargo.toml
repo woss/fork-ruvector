@@ -1,17 +1,17 @@
 [package]
-name = "router-wasm"
+name = "ruvector-router-wasm"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "WASM bindings for router-core"
+description = "WASM bindings for ruvector-router-core"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-router-core = { version = "0.1.1", path = "../router-core" }
+ruvector-router-core = { version = "0.1.1", path = "../ruvector-router-core" }
 
 # WASM dependencies
 wasm-bindgen = { workspace = true }

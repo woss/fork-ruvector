@@ -1,7 +1,7 @@
 //! WASM bindings for browser and WASI environments
 
 use wasm_bindgen::prelude::*;
-use router_core::{
+use ruvector_router_core::{
     DistanceMetric as CoreDistanceMetric, SearchQuery as CoreSearchQuery,
     VectorDB as CoreVectorDB, VectorEntry as CoreVectorEntry,
 };

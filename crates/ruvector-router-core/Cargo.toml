@@ -1,5 +1,5 @@
 [package]
-name = "router-core"
+name = "ruvector-router-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

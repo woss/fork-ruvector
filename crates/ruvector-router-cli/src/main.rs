@@ -2,7 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use colored::*;
-use router_core::{DistanceMetric, SearchQuery, VectorDB, VectorEntry};
+use ruvector_router_core::{DistanceMetric, SearchQuery, VectorDB, VectorEntry};
 use std::collections::HashMap;
 use std::time::Instant;
 

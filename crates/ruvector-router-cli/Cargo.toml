@@ -1,18 +1,18 @@
 [package]
-name = "router-cli"
+name = "ruvector-router-cli"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "CLI for testing and benchmarking router-core"
+description = "CLI for testing and benchmarking ruvector-router-core"
 
 [[bin]]
 name = "ruvector"
 path = "src/main.rs"
 
 [dependencies]
-router-core = { version = "0.1.1", path = "../router-core" }
+ruvector-router-core = { version = "0.1.1", path = "../ruvector-router-core" }
 
 # CLI dependencies
 clap = { version = "4.5", features = ["derive"] }
