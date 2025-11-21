@@ -23,6 +23,7 @@ target
 # Node.js
 node_modules/
 package-lock.json
+!npm/package-lock.json
 
 # Environment variables and secrets
 .env
