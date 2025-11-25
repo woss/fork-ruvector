@@ -2,10 +2,11 @@
 //!
 //! Provides multi-version concurrency control for high-throughput concurrent access
 
-use crate::edge::{Edge, EdgeId};
+use crate::edge::Edge;
 use crate::error::Result;
 use crate::hyperedge::{Hyperedge, HyperedgeId};
-use crate::node::{Node, NodeId};
+use crate::node::Node;
+use crate::types::{EdgeId, NodeId};
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};

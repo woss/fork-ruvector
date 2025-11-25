@@ -135,10 +135,11 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    /// Create a new pipeline from physical plan
-    pub fn new(plan: PhysicalPlan) -> Self {
+    /// Create a new pipeline from physical plan (takes ownership of operators)
+    pub fn new(mut plan: PhysicalPlan) -> Self {
+        let operators = std::mem::take(&mut plan.operators);
         Self {
-            operators: plan.operators.clone(),
+            operators,
             plan,
             current_operator: 0,
             context: ExecutionContext::new(),
@@ -146,10 +147,11 @@ impl Pipeline {
         }
     }
 
-    /// Create pipeline with custom context
-    pub fn with_context(plan: PhysicalPlan, context: ExecutionContext) -> Self {
+    /// Create pipeline with custom context (takes ownership of operators)
+    pub fn with_context(mut plan: PhysicalPlan, context: ExecutionContext) -> Self {
+        let operators = std::mem::take(&mut plan.operators);
         Self {
-            operators: plan.operators.clone(),
+            operators,
             plan,
             current_operator: 0,
             context,
@@ -242,7 +244,7 @@ impl PipelineBuilder {
     /// Build the pipeline
     pub fn build(self) -> Pipeline {
         let plan = PhysicalPlan {
-            operators: self.operators.clone(),
+            operators: self.operators,
             pipeline_breakers: Vec::new(),
             parallelism: 1,
         };

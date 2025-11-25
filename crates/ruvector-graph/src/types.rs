@@ -7,24 +7,63 @@ use std::collections::HashMap;
 pub type NodeId = String;
 pub type EdgeId = String;
 
+/// Property value types for graph nodes and edges
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Encode, Decode)]
 pub enum PropertyValue {
-    String(String),
-    Integer(i64),
-    Float(f64),
-    Boolean(bool),
-    List(Vec<PropertyValue>),
+    /// Null value
     Null,
+    /// Boolean value
+    Boolean(bool),
+    /// 64-bit integer
+    Integer(i64),
+    /// 64-bit floating point
+    Float(f64),
+    /// UTF-8 string
+    String(String),
+    /// Array of values
+    Array(Vec<PropertyValue>),
+    /// List of values (alias for Array)
+    List(Vec<PropertyValue>),
+    /// Map of string keys to values
+    Map(HashMap<String, PropertyValue>),
+}
+
+// Convenience constructors for PropertyValue
+impl PropertyValue {
+    /// Create a boolean value
+    pub fn boolean(b: bool) -> Self { PropertyValue::Boolean(b) }
+    /// Create an integer value
+    pub fn integer(i: i64) -> Self { PropertyValue::Integer(i) }
+    /// Create a float value
+    pub fn float(f: f64) -> Self { PropertyValue::Float(f) }
+    /// Create a string value
+    pub fn string(s: impl Into<String>) -> Self { PropertyValue::String(s.into()) }
+    /// Create an array value
+    pub fn array(arr: Vec<PropertyValue>) -> Self { PropertyValue::Array(arr) }
+    /// Create a map value
+    pub fn map(m: HashMap<String, PropertyValue>) -> Self { PropertyValue::Map(m) }
 }
 
 pub type Properties = HashMap<String, PropertyValue>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
 pub struct Label {
     pub name: String,
+}
+
+impl Label {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into() }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
 pub struct RelationType {
     pub name: String,
+}
+
+impl RelationType {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into() }
+    }
 }

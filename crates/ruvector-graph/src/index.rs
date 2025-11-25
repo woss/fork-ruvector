@@ -2,10 +2,10 @@
 //!
 //! Provides label indexes, property indexes, and edge type indexes for efficient querying
 
-use crate::edge::{Edge, EdgeId};
+use crate::edge::Edge;
 use crate::hyperedge::{Hyperedge, HyperedgeId};
-use crate::node::{Node, NodeId};
-use crate::property::PropertyValue;
+use crate::node::Node;
+use crate::types::{EdgeId, NodeId, PropertyValue};
 use dashmap::DashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -29,7 +29,7 @@ impl LabelIndex {
     pub fn add_node(&self, node: &Node) {
         for label in &node.labels {
             self.index
-                .entry(label.clone())
+                .entry(label.name.clone())
                 .or_insert_with(HashSet::new)
                 .insert(node.id.clone());
         }
@@ -38,7 +38,7 @@ impl LabelIndex {
     /// Remove a node from the index
     pub fn remove_node(&self, node: &Node) {
         for label in &node.labels {
-            if let Some(mut set) = self.index.get_mut(label) {
+            if let Some(mut set) = self.index.get_mut(&label.name) {
                 set.remove(&node.id);
             }
         }
@@ -128,12 +128,13 @@ impl PropertyIndex {
         self.index
             .get(key)
             .map(|value_map| {
-                value_map
-                    .iter()
-                    .flat_map(|entry| entry.value().iter().cloned())
-                    .collect::<HashSet<_>>()
-                    .into_iter()
-                    .collect()
+                let mut result = HashSet::new();
+                for entry in value_map.iter() {
+                    for id in entry.value().iter() {
+                        result.insert(id.clone());
+                    }
+                }
+                result.into_iter().collect()
             })
             .unwrap_or_default()
     }
@@ -152,11 +153,11 @@ impl PropertyIndex {
     fn property_value_to_string(&self, value: &PropertyValue) -> String {
         match value {
             PropertyValue::Null => "null".to_string(),
-            PropertyValue::Bool(b) => b.to_string(),
-            PropertyValue::Int(i) => i.to_string(),
+            PropertyValue::Boolean(b) => b.to_string(),
+            PropertyValue::Integer(i) => i.to_string(),
             PropertyValue::Float(f) => f.to_string(),
             PropertyValue::String(s) => s.clone(),
-            PropertyValue::Array(_) => format!("{:?}", value),
+            PropertyValue::Array(_) | PropertyValue::List(_) => format!("{:?}", value),
             PropertyValue::Map(_) => format!("{:?}", value),
         }
     }
@@ -419,7 +420,7 @@ mod tests {
         let alice = index.get_nodes_by_property("name", &PropertyValue::String("Alice".to_string()));
         assert_eq!(alice.len(), 1);
 
-        let age_30 = index.get_nodes_by_property("age", &PropertyValue::Int(30));
+        let age_30 = index.get_nodes_by_property("age", &PropertyValue::Integer(30));
         assert_eq!(age_30.len(), 2);
 
         let with_age = index.get_nodes_with_property("age");

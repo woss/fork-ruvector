@@ -329,21 +329,21 @@ impl GraphStorage {
     pub fn node_count(&self) -> Result<usize> {
         let read_txn = self.db.begin_read()?;
         let table = read_txn.open_table(NODES_TABLE)?;
-        Ok(table.len()? as usize)
+        Ok(table.iter()?.count())
     }
 
     /// Get the number of edges
     pub fn edge_count(&self) -> Result<usize> {
         let read_txn = self.db.begin_read()?;
         let table = read_txn.open_table(EDGES_TABLE)?;
-        Ok(table.len()? as usize)
+        Ok(table.iter()?.count())
     }
 
     /// Get the number of hyperedges
     pub fn hyperedge_count(&self) -> Result<usize> {
         let read_txn = self.db.begin_read()?;
         let table = read_txn.open_table(HYPEREDGES_TABLE)?;
-        Ok(table.len()? as usize)
+        Ok(table.iter()?.count())
     }
 }
 

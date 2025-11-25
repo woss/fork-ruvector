@@ -7,12 +7,12 @@ use std::cmp::Ordering;
 use std::mem;
 
 /// Adaptive Radix Tree for property indexing
-pub struct AdaptiveRadixTree<V> {
+pub struct AdaptiveRadixTree<V: Clone> {
     root: Option<Box<ArtNode<V>>>,
     size: usize,
 }
 
-impl<V> AdaptiveRadixTree<V> {
+impl<V: Clone> AdaptiveRadixTree<V> {
     pub fn new() -> Self {
         Self {
             root: None,
@@ -45,7 +45,7 @@ impl<V> AdaptiveRadixTree<V> {
                     *leaf_value = value;
                 } else {
                     // Create new internal node
-                    let mut new_node = ArtNode::Node4 {
+                    let _new_node: ArtNode<V> = ArtNode::Node4 {
                         prefix: leaf_key[depth..depth + common_prefix].to_vec(),
                         children: [None, None, None, None],
                         keys: [0; 4],
@@ -66,9 +66,9 @@ impl<V> AdaptiveRadixTree<V> {
 
                         // Find or create child
                         let mut found = false;
-                        for i in 0..*num_children {
+                        for i in 0..(*num_children as usize) {
                             if keys[i] == key_byte {
-                                Self::insert_recursive(&mut children[i].as_mut().unwrap(), key, next_depth + 1, value);
+                                Self::insert_recursive(&mut children[i].as_mut().unwrap(), key, next_depth + 1, value.clone());
                                 found = true;
                                 break;
                             }
@@ -78,11 +78,13 @@ impl<V> AdaptiveRadixTree<V> {
                             // Add new child
                             let idx = *num_children as usize;
                             keys[idx] = key_byte;
+                            // Note: value can only be used once, so this branch consumes it
                             children[idx] = Some(Box::new(ArtNode::Leaf {
                                 key: key.to_vec(),
                                 value,
                             }));
                             *num_children += 1;
+                            return;  // Value was consumed
                         }
                     }
                 }
@@ -201,7 +203,7 @@ impl<V> AdaptiveRadixTree<V> {
     }
 }
 
-impl<V> Default for AdaptiveRadixTree<V> {
+impl<V: Clone> Default for AdaptiveRadixTree<V> {
     fn default() -> Self {
         Self::new()
     }

@@ -10,6 +10,9 @@ pub enum GraphError {
     #[error("Edge not found: {0}")]
     EdgeNotFound(String),
 
+    #[error("Hyperedge not found: {0}")]
+    HyperedgeNotFound(String),
+
     #[error("Invalid query: {0}")]
     InvalidQuery(String),
 
@@ -58,8 +61,41 @@ pub enum GraphError {
     #[error("Cluster error: {0}")]
     ClusterError(String),
 
+    #[error("Index error: {0}")]
+    IndexError(String),
+
+    #[error("Invalid embedding: {0}")]
+    InvalidEmbedding(String),
+
+    #[error("Storage error: {0}")]
+    StorageError(String),
+
+    #[error("Execution error: {0}")]
+    ExecutionError(String),
+
+    #[error("Configuration error: {0}")]
+    ConfigError(String),
+
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+}
+
+impl From<anyhow::Error> for GraphError {
+    fn from(err: anyhow::Error) -> Self {
+        GraphError::StorageError(err.to_string())
+    }
+}
+
+impl From<bincode::error::EncodeError> for GraphError {
+    fn from(err: bincode::error::EncodeError) -> Self {
+        GraphError::SerializationError(err.to_string())
+    }
+}
+
+impl From<bincode::error::DecodeError> for GraphError {
+    fn from(err: bincode::error::DecodeError) -> Self {
+        GraphError::SerializationError(err.to_string())
+    }
 }
 
 pub type Result<T> = std::result::Result<T, GraphError>;

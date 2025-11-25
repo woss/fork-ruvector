@@ -167,7 +167,9 @@ impl RoaringBitmapIndex {
 
     /// Serialize to bytes
     pub fn serialize(&self) -> Vec<u8> {
-        self.bitmap.serialize()
+        let mut bytes = Vec::new();
+        self.bitmap.serialize_into(&mut bytes).expect("Failed to serialize bitmap");
+        bytes
     }
 
     /// Deserialize from bytes

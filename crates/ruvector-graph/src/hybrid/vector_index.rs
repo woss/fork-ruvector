@@ -3,8 +3,9 @@
 //! Integrates RuVector's HNSW index with graph nodes, edges, and hyperedges.
 
 use crate::error::{GraphError, Result};
-use crate::types::{NodeId, EdgeId, Properties};
+use crate::types::{NodeId, EdgeId, PropertyValue, Properties};
 use ruvector_core::index::hnsw::HnswIndex;
+use ruvector_core::index::VectorIndex;
 use ruvector_core::types::{DistanceMetric, HnswConfig, SearchResult};
 use dashmap::DashMap;
 use parking_lot::RwLock;
@@ -229,8 +230,6 @@ impl HybridIndex {
 
     /// Extract embedding from properties
     pub fn extract_embedding(&self, properties: &Properties) -> Result<Option<Vec<f32>>> {
-        use crate::property::PropertyValue;
-
         let prop_value = match properties.get(&self.config.embedding_property) {
             Some(v) => v,
             None => return Ok(None),
@@ -241,7 +240,7 @@ impl HybridIndex {
                 let embedding: Result<Vec<f32>> = arr.iter()
                     .map(|v| match v {
                         PropertyValue::Float(f) => Ok(*f as f32),
-                        PropertyValue::Int(i) => Ok(*i as f32),
+                        PropertyValue::Integer(i) => Ok(*i as f32),
                         _ => Err(GraphError::InvalidEmbedding(
                             "Embedding array must contain numbers".to_string()
                         )),
@@ -257,9 +256,9 @@ impl HybridIndex {
 
     /// Get index statistics
     pub fn stats(&self) -> HybridIndexStats {
-        let node_count = self.node_index.read().as_ref().map_or(0, |idx| idx.len());
-        let edge_count = self.edge_index.read().as_ref().map_or(0, |idx| idx.len());
-        let hyperedge_count = self.hyperedge_index.read().as_ref().map_or(0, |idx| idx.len());
+        let node_count = self.node_id_map.len();
+        let edge_count = self.edge_id_map.len();
+        let hyperedge_count = self.hyperedge_id_map.len();
 
         HybridIndexStats {
             node_count,

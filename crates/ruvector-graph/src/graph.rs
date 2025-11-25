@@ -1,11 +1,11 @@
 //! Graph database implementation with concurrent access and indexing
 
-use crate::edge::{Edge, EdgeId};
+use crate::edge::Edge;
 use crate::error::Result;
 use crate::hyperedge::{Hyperedge, HyperedgeId};
 use crate::index::{AdjacencyIndex, EdgeTypeIndex, HyperedgeNodeIndex, LabelIndex, PropertyIndex};
-use crate::node::{Node, NodeId};
-use crate::property::PropertyValue;
+use crate::node::Node;
+use crate::types::{EdgeId, NodeId, PropertyValue};
 use crate::storage::GraphStorage;
 use dashmap::DashMap;
 use std::path::Path;

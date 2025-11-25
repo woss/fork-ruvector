@@ -26,17 +26,18 @@ pub mod hybrid;
 #[cfg(feature = "distributed")]
 pub mod distributed;
 
+// Core type re-exports
 pub use error::{GraphError, Result};
-pub use types::{NodeId, EdgeId};
-pub use property::{PropertyValue, Properties};
+pub use types::{NodeId, EdgeId, PropertyValue, Properties, Label, RelationType};
 pub use node::Node;
 pub use edge::Edge;
-pub use hyperedge::{Hyperedge, HyperedgeBuilder};
+pub use hyperedge::{Hyperedge, HyperedgeBuilder, HyperedgeId};
 pub use graph::GraphDB;
 pub use storage::GraphStorage;
 pub use transaction::{Transaction, TransactionManager, IsolationLevel};
 
-// Re-export hybrid query types
+// Re-export hybrid query types when available
+#[cfg(not(feature = "minimal"))]
 pub use hybrid::{
     HybridIndex, EmbeddingConfig, SemanticSearch, RagEngine, RagConfig,
     VectorCypherParser, GraphNeuralEngine, GnnConfig,

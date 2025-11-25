@@ -1,12 +1,7 @@
 //! Standalone example demonstrating the Cypher parser
 //! Run with: cargo run --example test_cypher_parser
 
-// Import only the cypher module components
-mod cypher {
-    include!("../src/cypher/mod.rs");
-}
-
-use cypher::{parse_cypher, ast::*};
+use ruvector_graph::cypher::{parse_cypher, ast::*};
 
 fn main() {
     println!("=== Cypher Parser Test Suite ===\n");

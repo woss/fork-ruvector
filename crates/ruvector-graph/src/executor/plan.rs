@@ -5,7 +5,9 @@
 use crate::executor::operators::{Operator, ScanMode, JoinType, AggregateFunction};
 use crate::executor::stats::Statistics;
 use crate::executor::{Result, ExecutionError};
+use ordered_float::OrderedFloat;
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 
@@ -41,11 +43,20 @@ impl LogicalPlan {
 }
 
 /// Physical query plan (low-level, executor input)
-#[derive(Debug, Clone)]
 pub struct PhysicalPlan {
     pub operators: Vec<Box<dyn Operator>>,
     pub pipeline_breakers: Vec<usize>,
     pub parallelism: usize,
+}
+
+impl fmt::Debug for PhysicalPlan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PhysicalPlan")
+            .field("operator_count", &self.operators.len())
+            .field("pipeline_breakers", &self.pipeline_breakers)
+            .field("parallelism", &self.parallelism)
+            .finish()
+    }
 }
 
 impl PhysicalPlan {
@@ -130,6 +141,12 @@ impl PhysicalPlan {
                 Self::compile_node(input, stats, operators, pipeline_breakers)?;
                 operators.push(Box::new(crate::executor::operators::Project::new(
                     columns.clone(),
+                )));
+            }
+            PlanNode::HyperedgeScan { mode, filter } => {
+                operators.push(Box::new(crate::executor::operators::HyperedgeScan::new(
+                    mode.clone(),
+                    filter.clone(),
                 )));
             }
         }
@@ -299,6 +316,22 @@ pub enum Value {
     Boolean(bool),
     Bytes(Vec<u8>),
     Null,
+}
+
+impl Eq for Value {}
+
+impl Hash for Value {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+        match self {
+            Value::Int64(v) => v.hash(state),
+            Value::Float64(v) => OrderedFloat(*v).hash(state),
+            Value::String(v) => v.hash(state),
+            Value::Boolean(v) => v.hash(state),
+            Value::Bytes(v) => v.hash(state),
+            Value::Null => {}
+        }
+    }
 }
 
 impl Value {

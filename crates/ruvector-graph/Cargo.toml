@@ -50,6 +50,7 @@ once_cell = { workspace = true }
 ndarray = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
+ordered-float = "4.2"
 
 # Time and UUID
 chrono = { workspace = true }

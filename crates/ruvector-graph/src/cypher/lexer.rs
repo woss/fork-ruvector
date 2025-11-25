@@ -196,41 +196,46 @@ fn parse_token(input: &str) -> IResult<&str, (TokenKind, &str)> {
 fn parse_keyword(input: &str) -> IResult<&str, (TokenKind, &str)> {
     let (input, _) = multispace0(input)?;
 
+    // Split into nested alt() calls since nom's alt() supports max 21 alternatives
     alt((
-        map(tag_no_case("OPTIONAL MATCH"), |s: &str| (TokenKind::OptionalMatch, s)),
-        map(tag_no_case("DETACH DELETE"), |s: &str| (TokenKind::DetachDelete, s)),
-        map(tag_no_case("ORDER BY"), |s: &str| (TokenKind::OrderBy, s)),
-        map(tag_no_case("ON CREATE"), |s: &str| (TokenKind::OnCreate, s)),
-        map(tag_no_case("ON MATCH"), |s: &str| (TokenKind::OnMatch, s)),
-        map(tag_no_case("MATCH"), |s: &str| (TokenKind::Match, s)),
-        map(tag_no_case("WHERE"), |s: &str| (TokenKind::Where, s)),
-        map(tag_no_case("RETURN"), |s: &str| (TokenKind::Return, s)),
-        map(tag_no_case("CREATE"), |s: &str| (TokenKind::Create, s)),
-        map(tag_no_case("MERGE"), |s: &str| (TokenKind::Merge, s)),
-        map(tag_no_case("DELETE"), |s: &str| (TokenKind::Delete, s)),
-        map(tag_no_case("SET"), |s: &str| (TokenKind::Set, s)),
-        map(tag_no_case("REMOVE"), |s: &str| (TokenKind::Remove, s)),
-        map(tag_no_case("WITH"), |s: &str| (TokenKind::With, s)),
-        map(tag_no_case("LIMIT"), |s: &str| (TokenKind::Limit, s)),
-        map(tag_no_case("SKIP"), |s: &str| (TokenKind::Skip, s)),
-        map(tag_no_case("DISTINCT"), |s: &str| (TokenKind::Distinct, s)),
-        map(tag_no_case("AS"), |s: &str| (TokenKind::As, s)),
-        map(tag_no_case("ASC"), |s: &str| (TokenKind::Asc, s)),
-        map(tag_no_case("DESC"), |s: &str| (TokenKind::Desc, s)),
-        map(tag_no_case("CASE"), |s: &str| (TokenKind::Case, s)),
-        map(tag_no_case("WHEN"), |s: &str| (TokenKind::When, s)),
-        map(tag_no_case("THEN"), |s: &str| (TokenKind::Then, s)),
-        map(tag_no_case("ELSE"), |s: &str| (TokenKind::Else, s)),
-        map(tag_no_case("END"), |s: &str| (TokenKind::End, s)),
-        map(tag_no_case("AND"), |s: &str| (TokenKind::And, s)),
-        map(tag_no_case("OR"), |s: &str| (TokenKind::Or, s)),
-        map(tag_no_case("XOR"), |s: &str| (TokenKind::Xor, s)),
-        map(tag_no_case("NOT"), |s: &str| (TokenKind::Not, s)),
-        map(tag_no_case("IN"), |s: &str| (TokenKind::In, s)),
-        map(tag_no_case("IS"), |s: &str| (TokenKind::Is, s)),
-        map(tag_no_case("NULL"), |s: &str| (TokenKind::Null, s)),
-        map(tag_no_case("TRUE"), |s: &str| (TokenKind::True, s)),
-        map(tag_no_case("FALSE"), |s: &str| (TokenKind::False, s)),
+        alt((
+            map(tag_no_case("OPTIONAL MATCH"), |s: &str| (TokenKind::OptionalMatch, s)),
+            map(tag_no_case("DETACH DELETE"), |s: &str| (TokenKind::DetachDelete, s)),
+            map(tag_no_case("ORDER BY"), |s: &str| (TokenKind::OrderBy, s)),
+            map(tag_no_case("ON CREATE"), |s: &str| (TokenKind::OnCreate, s)),
+            map(tag_no_case("ON MATCH"), |s: &str| (TokenKind::OnMatch, s)),
+            map(tag_no_case("MATCH"), |s: &str| (TokenKind::Match, s)),
+            map(tag_no_case("WHERE"), |s: &str| (TokenKind::Where, s)),
+            map(tag_no_case("RETURN"), |s: &str| (TokenKind::Return, s)),
+            map(tag_no_case("CREATE"), |s: &str| (TokenKind::Create, s)),
+            map(tag_no_case("MERGE"), |s: &str| (TokenKind::Merge, s)),
+            map(tag_no_case("DELETE"), |s: &str| (TokenKind::Delete, s)),
+            map(tag_no_case("SET"), |s: &str| (TokenKind::Set, s)),
+            map(tag_no_case("REMOVE"), |s: &str| (TokenKind::Remove, s)),
+            map(tag_no_case("WITH"), |s: &str| (TokenKind::With, s)),
+            map(tag_no_case("LIMIT"), |s: &str| (TokenKind::Limit, s)),
+            map(tag_no_case("SKIP"), |s: &str| (TokenKind::Skip, s)),
+            map(tag_no_case("DISTINCT"), |s: &str| (TokenKind::Distinct, s)),
+        )),
+        alt((
+            map(tag_no_case("ASC"), |s: &str| (TokenKind::Asc, s)),
+            map(tag_no_case("DESC"), |s: &str| (TokenKind::Desc, s)),
+            map(tag_no_case("CASE"), |s: &str| (TokenKind::Case, s)),
+            map(tag_no_case("WHEN"), |s: &str| (TokenKind::When, s)),
+            map(tag_no_case("THEN"), |s: &str| (TokenKind::Then, s)),
+            map(tag_no_case("ELSE"), |s: &str| (TokenKind::Else, s)),
+            map(tag_no_case("END"), |s: &str| (TokenKind::End, s)),
+            map(tag_no_case("AND"), |s: &str| (TokenKind::And, s)),
+            map(tag_no_case("OR"), |s: &str| (TokenKind::Or, s)),
+            map(tag_no_case("XOR"), |s: &str| (TokenKind::Xor, s)),
+            map(tag_no_case("NOT"), |s: &str| (TokenKind::Not, s)),
+            map(tag_no_case("IN"), |s: &str| (TokenKind::In, s)),
+            map(tag_no_case("IS"), |s: &str| (TokenKind::Is, s)),
+            map(tag_no_case("NULL"), |s: &str| (TokenKind::Null, s)),
+            map(tag_no_case("TRUE"), |s: &str| (TokenKind::True, s)),
+            map(tag_no_case("FALSE"), |s: &str| (TokenKind::False, s)),
+            map(tag_no_case("AS"), |s: &str| (TokenKind::As, s)),
+        )),
     ))(input)
 }
 
@@ -304,11 +309,12 @@ fn parse_identifier(input: &str) -> IResult<&str, (TokenKind, &str)> {
     let (input, _) = multispace0(input)?;
 
     // Backtick-quoted identifier
-    if let Ok((rest, id)) = delimited(
+    let backtick_result: IResult<&str, &str> = delimited(
         char('`'),
         take_while1(|c| c != '`'),
         char('`'),
-    )(input)
+    )(input);
+    if let Ok((rest, id)) = backtick_result
     {
         return Ok((rest, (TokenKind::Identifier(id.to_string()), id)));
     }

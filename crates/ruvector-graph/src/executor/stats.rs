@@ -259,7 +259,12 @@ impl Histogram {
             };
 
             let count = values.iter().filter(|&&v| v >= lower && v < upper).count();
-            let ndv = values.iter().filter(|&&v| v >= lower && v < upper).collect::<std::collections::HashSet<_>>().len();
+            // Estimate NDV by counting unique values (using BTreeSet to avoid Hash requirement)
+            let ndv = values.iter()
+                .filter(|&&v| v >= lower && v < upper)
+                .map(|&v| ordered_float::OrderedFloat(v))
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
 
             buckets.push(HistogramBucket {
                 lower_bound: ColumnValue::Float64(lower),
