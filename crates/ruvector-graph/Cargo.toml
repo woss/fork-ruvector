@@ -1,0 +1,162 @@
+[package]
+name = "ruvector-graph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Distributed Neo4j-compatible hypergraph database with SIMD optimization"
+
+[dependencies]
+# RuVector dependencies
+ruvector-core = { path = "../ruvector-core", features = ["hnsw", "simd"] }
+ruvector-raft = { path = "../ruvector-raft", optional = true }
+ruvector-cluster = { path = "../ruvector-cluster", optional = true }
+ruvector-replication = { path = "../ruvector-replication", optional = true }
+
+# Storage and indexing
+redb = { workspace = true }
+memmap2 = { workspace = true }
+hnsw_rs = { workspace = true }
+
+# SIMD and performance
+simsimd = { workspace = true }
+rayon = { workspace = true }
+crossbeam = { workspace = true }
+num_cpus = "1.16"
+
+# Serialization
+rkyv = { workspace = true }
+bincode = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "macros", "time", "net"] }
+futures = { workspace = true }
+
+# Error handling and logging
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+# Data structures
+dashmap = { workspace = true }
+parking_lot = { workspace = true }
+once_cell = { workspace = true }
+
+# Math and numerics
+ndarray = { workspace = true }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+
+# Time and UUID
+chrono = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+# Graph algorithms and partitioning
+petgraph = "0.6"
+roaring = "0.10"  # Roaring bitmaps for label indexes
+
+# Query parsing (Cypher)
+nom = "7.1"
+nom_locate = "4.2"
+pest = { version = "2.7", optional = true }
+pest_derive = { version = "2.7", optional = true }
+lalrpop-util = { version = "0.21", optional = true }
+
+# Cache
+lru = "0.12"
+moka = { version = "0.12", features = ["future"] }
+
+# Compression (for storage optimization)
+zstd = "0.13"
+lz4 = "1.24"
+
+# Networking (for federation)
+tonic = { version = "0.12", features = ["transport"], optional = true }
+prost = { version = "0.13", optional = true }
+tower = { version = "0.4", optional = true }
+hyper = { version = "1.4", optional = true }
+
+# Hashing for sharding
+blake3 = { version = "1.5", optional = true }
+xxhash-rust = { version = "0.8", features = ["xxh3"], optional = true }
+
+# Metrics
+prometheus = { version = "0.13", optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+mockall = { workspace = true }
+tempfile = "3.13"
+tracing-subscriber = { workspace = true }
+tokio-test = "0.4"
+
+# Benchmark datasets
+csv = "1.3"
+
+[build-dependencies]
+pest_generator = "2.7"
+
+[features]
+default = ["simd"]
+
+# SIMD optimizations
+simd = ["ruvector-core/simd"]
+
+# Distributed deployment with RAFT
+distributed = ["ruvector-raft", "ruvector-cluster", "ruvector-replication", "blake3", "xxhash-rust"]
+
+# Cross-cluster federation
+federation = ["tonic", "prost", "tower", "hyper", "distributed"]
+
+# Advanced query optimization
+jit = []  # JIT compilation for hot paths (future)
+
+# Monitoring and metrics
+metrics = ["prometheus"]
+
+# Full-text search support
+fulltext = []
+
+# Geospatial indexing
+geospatial = []
+
+# Temporal graph support (time-varying graphs)
+temporal = []
+
+# Query parser implementations
+cypher-pest = ["pest", "pest_derive"]
+cypher-lalrpop = ["lalrpop-util"]
+
+[[example]]
+name = "simple_graph"
+path = "examples/simple_graph.rs"
+
+[[example]]
+name = "cypher_queries"
+path = "examples/cypher_queries.rs"
+
+[[example]]
+name = "distributed_setup"
+path = "examples/distributed_setup.rs"
+required-features = ["distributed"]
+
+[[example]]
+name = "hybrid_search"
+path = "examples/hybrid_search.rs"
+
+[[example]]
+name = "hypergraph_rag"
+path = "examples/hypergraph_rag.rs"
+
+[lib]
+crate-type = ["rlib"]
+bench = false
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

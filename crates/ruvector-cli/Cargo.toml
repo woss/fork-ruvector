@@ -48,6 +48,7 @@ ndarray = { workspace = true }
 
 # Terminal colors
 colored = "2.1"
+prettytable-rs = "0.10"
 
 # HTTP for MCP SSE transport
 hyper = { version = "1.5", features = ["full"] }

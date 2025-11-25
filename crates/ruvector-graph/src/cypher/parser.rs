@@ -1,0 +1,926 @@
+//! Recursive descent parser for Cypher query language
+//!
+//! Converts token stream into Abstract Syntax Tree (AST).
+
+use super::ast::*;
+use super::lexer::{tokenize, Token, TokenKind};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ParseError {
+    #[error("Unexpected token: expected {expected}, found {found} at line {line}, column {column}")]
+    UnexpectedToken {
+        expected: String,
+        found: String,
+        line: usize,
+        column: usize,
+    },
+    #[error("Unexpected end of input")]
+    UnexpectedEof,
+    #[error("Lexer error: {0}")]
+    LexerError(#[from] super::lexer::LexerError),
+    #[error("Invalid syntax: {0}")]
+    InvalidSyntax(String),
+}
+
+type ParseResult<T> = Result<T, ParseError>;
+
+pub struct Parser {
+    tokens: Vec<Token>,
+    current: usize,
+}
+
+impl Parser {
+    fn new(tokens: Vec<Token>) -> Self {
+        Self { tokens, current: 0 }
+    }
+
+    fn is_at_end(&self) -> bool {
+        matches!(self.peek().kind, TokenKind::Eof)
+    }
+
+    fn peek(&self) -> &Token {
+        &self.tokens[self.current]
+    }
+
+    fn previous(&self) -> &Token {
+        &self.tokens[self.current - 1]
+    }
+
+    fn advance(&mut self) -> &Token {
+        if !self.is_at_end() {
+            self.current += 1;
+        }
+        self.previous()
+    }
+
+    fn check(&self, kind: &TokenKind) -> bool {
+        if self.is_at_end() {
+            return false;
+        }
+        std::mem::discriminant(&self.peek().kind) == std::mem::discriminant(kind)
+    }
+
+    fn match_token(&mut self, kinds: &[TokenKind]) -> bool {
+        for kind in kinds {
+            if self.check(kind) {
+                self.advance();
+                return true;
+            }
+        }
+        false
+    }
+
+    fn consume(&mut self, kind: TokenKind, message: &str) -> ParseResult<&Token> {
+        if self.check(&kind) {
+            Ok(self.advance())
+        } else {
+            let token = self.peek();
+            Err(ParseError::UnexpectedToken {
+                expected: message.to_string(),
+                found: token.kind.to_string(),
+                line: token.position.line,
+                column: token.position.column,
+            })
+        }
+    }
+
+    fn parse_query(&mut self) -> ParseResult<Query> {
+        let mut statements = Vec::new();
+
+        while !self.is_at_end() {
+            statements.push(self.parse_statement()?);
+            self.match_token(&[TokenKind::Semicolon]);
+        }
+
+        Ok(Query { statements })
+    }
+
+    fn parse_statement(&mut self) -> ParseResult<Statement> {
+        match &self.peek().kind {
+            TokenKind::Match | TokenKind::OptionalMatch => {
+                Ok(Statement::Match(self.parse_match()?))
+            }
+            TokenKind::Create => Ok(Statement::Create(self.parse_create()?)),
+            TokenKind::Merge => Ok(Statement::Merge(self.parse_merge()?)),
+            TokenKind::Delete | TokenKind::DetachDelete => {
+                Ok(Statement::Delete(self.parse_delete()?))
+            }
+            TokenKind::Set => Ok(Statement::Set(self.parse_set()?)),
+            TokenKind::Return => Ok(Statement::Return(self.parse_return()?)),
+            TokenKind::With => Ok(Statement::With(self.parse_with()?)),
+            _ => {
+                let token = self.peek();
+                Err(ParseError::UnexpectedToken {
+                    expected: "statement keyword".to_string(),
+                    found: token.kind.to_string(),
+                    line: token.position.line,
+                    column: token.position.column,
+                })
+            }
+        }
+    }
+
+    fn parse_match(&mut self) -> ParseResult<MatchClause> {
+        let optional = self.match_token(&[TokenKind::OptionalMatch]);
+        if !optional {
+            self.consume(TokenKind::Match, "MATCH")?;
+        }
+
+        let patterns = self.parse_patterns()?;
+
+        let where_clause = if self.match_token(&[TokenKind::Where]) {
+            Some(WhereClause {
+                condition: self.parse_expression()?,
+            })
+        } else {
+            None
+        };
+
+        Ok(MatchClause {
+            optional,
+            patterns,
+            where_clause,
+        })
+    }
+
+    fn parse_patterns(&mut self) -> ParseResult<Vec<Pattern>> {
+        let mut patterns = vec![self.parse_pattern()?];
+
+        while self.match_token(&[TokenKind::Comma]) {
+            patterns.push(self.parse_pattern()?);
+        }
+
+        Ok(patterns)
+    }
+
+    fn parse_pattern(&mut self) -> ParseResult<Pattern> {
+        // Check for path pattern: p = (...)
+        if let TokenKind::Identifier(var) = &self.peek().kind {
+            let var = var.clone();
+            if self.tokens.get(self.current + 1).map(|t| &t.kind) == Some(&TokenKind::Equal) {
+                self.advance(); // consume identifier
+                self.advance(); // consume =
+                return Ok(Pattern::Path(PathPattern {
+                    variable: var,
+                    pattern: Box::new(self.parse_pattern()?),
+                }));
+            }
+        }
+
+        self.parse_relationship_pattern()
+    }
+
+    fn parse_relationship_pattern(&mut self) -> ParseResult<Pattern> {
+        let from = self.parse_node_pattern()?;
+
+        // Check for relationship
+        if self.check(&TokenKind::Dash) || self.check(&TokenKind::LeftArrow) {
+            let direction = if self.match_token(&[TokenKind::LeftArrow]) {
+                Direction::Incoming
+            } else {
+                self.consume(TokenKind::Dash, "-")?;
+                Direction::Outgoing
+            };
+
+            // Parse relationship details [r:TYPE {props} *min..max]
+            let (variable, rel_type, properties, range) = if self.match_token(&[TokenKind::LeftBracket]) {
+                let variable = if let TokenKind::Identifier(v) = &self.peek().kind {
+                    let v = v.clone();
+                    self.advance();
+                    Some(v)
+                } else {
+                    None
+                };
+
+                let rel_type = if self.match_token(&[TokenKind::Colon]) {
+                    if let TokenKind::Identifier(t) = &self.peek().kind {
+                        let t = t.clone();
+                        self.advance();
+                        Some(t)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let properties = if self.check(&TokenKind::LeftBrace) {
+                    Some(self.parse_property_map()?)
+                } else {
+                    None
+                };
+
+                let range = if self.match_token(&[TokenKind::Star]) {
+                    Some(self.parse_relationship_range()?)
+                } else {
+                    None
+                };
+
+                self.consume(TokenKind::RightBracket, "]")?;
+                (variable, rel_type, properties, range)
+            } else {
+                (None, None, None, None)
+            };
+
+            // Check direction
+            if direction == Direction::Outgoing {
+                self.consume(TokenKind::Arrow, "->")?;
+            } else {
+                self.consume(TokenKind::Dash, "-")?;
+            }
+
+            // Parse target node(s) - check for hyperedge
+            self.consume(TokenKind::LeftParen, "(")?;
+
+            let mut target_nodes = vec![self.parse_node_pattern_content()?];
+
+            // Check for multiple target nodes (hyperedge)
+            while self.match_token(&[TokenKind::Comma]) {
+                target_nodes.push(self.parse_node_pattern_content()?);
+            }
+
+            self.consume(TokenKind::RightParen, ")")?;
+
+            // If multiple targets, create hyperedge
+            if target_nodes.len() > 1 {
+                Ok(Pattern::Hyperedge(HyperedgePattern {
+                    variable,
+                    rel_type: rel_type.ok_or_else(|| {
+                        ParseError::InvalidSyntax("Hyperedge requires relationship type".to_string())
+                    })?,
+                    properties,
+                    from: Box::new(from),
+                    arity: target_nodes.len() + 1, // +1 for source node
+                    to: target_nodes,
+                }))
+            } else {
+                Ok(Pattern::Relationship(RelationshipPattern {
+                    variable,
+                    rel_type,
+                    properties,
+                    direction,
+                    range,
+                    from: Box::new(from),
+                    to: Box::new(target_nodes.into_iter().next().unwrap()),
+                }))
+            }
+        } else {
+            Ok(Pattern::Node(from))
+        }
+    }
+
+    fn parse_node_pattern(&mut self) -> ParseResult<NodePattern> {
+        self.consume(TokenKind::LeftParen, "(")?;
+        let node = self.parse_node_pattern_content()?;
+        self.consume(TokenKind::RightParen, ")")?;
+        Ok(node)
+    }
+
+    fn parse_node_pattern_content(&mut self) -> ParseResult<NodePattern> {
+        let variable = if let TokenKind::Identifier(v) = &self.peek().kind {
+            if !self.tokens.get(self.current + 1)
+                .map(|t| matches!(t.kind, TokenKind::Colon | TokenKind::LeftBrace))
+                .unwrap_or(false)
+            {
+                return Ok(NodePattern {
+                    variable: Some(v.clone()),
+                    labels: vec![],
+                    properties: None,
+                });
+            }
+            let v = v.clone();
+            self.advance();
+            Some(v)
+        } else {
+            None
+        };
+
+        let mut labels = Vec::new();
+        while self.match_token(&[TokenKind::Colon]) {
+            if let TokenKind::Identifier(label) = &self.peek().kind {
+                labels.push(label.clone());
+                self.advance();
+            }
+        }
+
+        let properties = if self.check(&TokenKind::LeftBrace) {
+            Some(self.parse_property_map()?)
+        } else {
+            None
+        };
+
+        Ok(NodePattern {
+            variable,
+            labels,
+            properties,
+        })
+    }
+
+    fn parse_property_map(&mut self) -> ParseResult<PropertyMap> {
+        self.consume(TokenKind::LeftBrace, "{")?;
+        let mut map = PropertyMap::new();
+
+        if !self.check(&TokenKind::RightBrace) {
+            loop {
+                let key = if let TokenKind::Identifier(k) = &self.peek().kind {
+                    k.clone()
+                } else {
+                    return Err(ParseError::InvalidSyntax("Expected property name".to_string()));
+                };
+                self.advance();
+
+                self.consume(TokenKind::Colon, ":")?;
+                let value = self.parse_expression()?;
+                map.insert(key, value);
+
+                if !self.match_token(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(TokenKind::RightBrace, "}")?;
+        Ok(map)
+    }
+
+    fn parse_relationship_range(&mut self) -> ParseResult<RelationshipRange> {
+        let min = if let TokenKind::Integer(n) = self.peek().kind {
+            self.advance();
+            Some(n as usize)
+        } else {
+            None
+        };
+
+        let max = if self.match_token(&[TokenKind::DotDot]) {
+            if let TokenKind::Integer(n) = self.peek().kind {
+                self.advance();
+                Some(n as usize)
+            } else {
+                None
+            }
+        } else {
+            min
+        };
+
+        Ok(RelationshipRange { min, max })
+    }
+
+    fn parse_create(&mut self) -> ParseResult<CreateClause> {
+        self.consume(TokenKind::Create, "CREATE")?;
+        let patterns = self.parse_patterns()?;
+        Ok(CreateClause { patterns })
+    }
+
+    fn parse_merge(&mut self) -> ParseResult<MergeClause> {
+        self.consume(TokenKind::Merge, "MERGE")?;
+        let pattern = self.parse_pattern()?;
+
+        let mut on_create = None;
+        let mut on_match = None;
+
+        while self.peek().kind == TokenKind::OnCreate || self.peek().kind == TokenKind::OnMatch {
+            if self.match_token(&[TokenKind::OnCreate]) {
+                on_create = Some(self.parse_set()?);
+            } else if self.match_token(&[TokenKind::OnMatch]) {
+                on_match = Some(self.parse_set()?);
+            }
+        }
+
+        Ok(MergeClause {
+            pattern,
+            on_create,
+            on_match,
+        })
+    }
+
+    fn parse_delete(&mut self) -> ParseResult<DeleteClause> {
+        let detach = self.match_token(&[TokenKind::DetachDelete]);
+        if !detach {
+            self.consume(TokenKind::Delete, "DELETE")?;
+        }
+
+        let mut expressions = vec![self.parse_expression()?];
+        while self.match_token(&[TokenKind::Comma]) {
+            expressions.push(self.parse_expression()?);
+        }
+
+        Ok(DeleteClause { detach, expressions })
+    }
+
+    fn parse_set(&mut self) -> ParseResult<SetClause> {
+        self.consume(TokenKind::Set, "SET")?;
+        let mut items = vec![];
+
+        loop {
+            if let TokenKind::Identifier(var) = &self.peek().kind {
+                let var = var.clone();
+                self.advance();
+
+                if self.match_token(&[TokenKind::Dot]) {
+                    if let TokenKind::Identifier(prop) = &self.peek().kind {
+                        let prop = prop.clone();
+                        self.advance();
+                        self.consume(TokenKind::Equal, "=")?;
+                        let value = self.parse_expression()?;
+                        items.push(SetItem::Property {
+                            variable: var,
+                            property: prop,
+                            value,
+                        });
+                    }
+                } else if self.match_token(&[TokenKind::Equal]) {
+                    let value = self.parse_expression()?;
+                    items.push(SetItem::Variable { variable: var, value });
+                }
+            }
+
+            if !self.match_token(&[TokenKind::Comma]) {
+                break;
+            }
+        }
+
+        Ok(SetClause { items })
+    }
+
+    fn parse_return(&mut self) -> ParseResult<ReturnClause> {
+        self.consume(TokenKind::Return, "RETURN")?;
+        let distinct = self.match_token(&[TokenKind::Distinct]);
+
+        let items = self.parse_return_items()?;
+        let order_by = self.parse_order_by()?;
+
+        let skip = if self.match_token(&[TokenKind::Skip]) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let limit = if self.match_token(&[TokenKind::Limit]) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        Ok(ReturnClause {
+            distinct,
+            items,
+            order_by,
+            skip,
+            limit,
+        })
+    }
+
+    fn parse_with(&mut self) -> ParseResult<WithClause> {
+        self.consume(TokenKind::With, "WITH")?;
+        let distinct = self.match_token(&[TokenKind::Distinct]);
+
+        let items = self.parse_return_items()?;
+
+        let where_clause = if self.match_token(&[TokenKind::Where]) {
+            Some(WhereClause {
+                condition: self.parse_expression()?,
+            })
+        } else {
+            None
+        };
+
+        let order_by = self.parse_order_by()?;
+
+        let skip = if self.match_token(&[TokenKind::Skip]) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let limit = if self.match_token(&[TokenKind::Limit]) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        Ok(WithClause {
+            distinct,
+            items,
+            where_clause,
+            order_by,
+            skip,
+            limit,
+        })
+    }
+
+    fn parse_return_items(&mut self) -> ParseResult<Vec<ReturnItem>> {
+        let mut items = vec![];
+
+        loop {
+            let expression = self.parse_expression()?;
+            let alias = if self.match_token(&[TokenKind::As]) {
+                if let TokenKind::Identifier(name) = &self.peek().kind {
+                    let name = name.clone();
+                    self.advance();
+                    Some(name)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            items.push(ReturnItem { expression, alias });
+
+            if !self.match_token(&[TokenKind::Comma]) {
+                break;
+            }
+        }
+
+        Ok(items)
+    }
+
+    fn parse_order_by(&mut self) -> ParseResult<Option<OrderBy>> {
+        if !self.match_token(&[TokenKind::OrderBy]) {
+            return Ok(None);
+        }
+
+        let mut items = vec![];
+
+        loop {
+            let expression = self.parse_expression()?;
+            let ascending = if self.match_token(&[TokenKind::Desc]) {
+                false
+            } else {
+                self.match_token(&[TokenKind::Asc]);
+                true
+            };
+
+            items.push(OrderByItem {
+                expression,
+                ascending,
+            });
+
+            if !self.match_token(&[TokenKind::Comma]) {
+                break;
+            }
+        }
+
+        Ok(Some(OrderBy { items }))
+    }
+
+    fn parse_expression(&mut self) -> ParseResult<Expression> {
+        self.parse_or()
+    }
+
+    fn parse_or(&mut self) -> ParseResult<Expression> {
+        let mut expr = self.parse_xor()?;
+
+        while self.match_token(&[TokenKind::Or]) {
+            let right = self.parse_xor()?;
+            expr = Expression::BinaryOp {
+                left: Box::new(expr),
+                op: BinaryOperator::Or,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_xor(&mut self) -> ParseResult<Expression> {
+        let mut expr = self.parse_and()?;
+
+        while self.match_token(&[TokenKind::Xor]) {
+            let right = self.parse_and()?;
+            expr = Expression::BinaryOp {
+                left: Box::new(expr),
+                op: BinaryOperator::Xor,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_and(&mut self) -> ParseResult<Expression> {
+        let mut expr = self.parse_comparison()?;
+
+        while self.match_token(&[TokenKind::And]) {
+            let right = self.parse_comparison()?;
+            expr = Expression::BinaryOp {
+                left: Box::new(expr),
+                op: BinaryOperator::And,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_comparison(&mut self) -> ParseResult<Expression> {
+        let mut expr = self.parse_additive()?;
+
+        if let Some(op) = self.parse_comparison_op() {
+            let right = self.parse_additive()?;
+            expr = Expression::BinaryOp {
+                left: Box::new(expr),
+                op,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_comparison_op(&mut self) -> Option<BinaryOperator> {
+        if self.match_token(&[TokenKind::Equal]) {
+            Some(BinaryOperator::Equal)
+        } else if self.match_token(&[TokenKind::NotEqual]) {
+            Some(BinaryOperator::NotEqual)
+        } else if self.match_token(&[TokenKind::LessThanOrEqual]) {
+            Some(BinaryOperator::LessThanOrEqual)
+        } else if self.match_token(&[TokenKind::GreaterThanOrEqual]) {
+            Some(BinaryOperator::GreaterThanOrEqual)
+        } else if self.match_token(&[TokenKind::LessThan]) {
+            Some(BinaryOperator::LessThan)
+        } else if self.match_token(&[TokenKind::GreaterThan]) {
+            Some(BinaryOperator::GreaterThan)
+        } else {
+            None
+        }
+    }
+
+    fn parse_additive(&mut self) -> ParseResult<Expression> {
+        let mut expr = self.parse_multiplicative()?;
+
+        while let Some(op) = self.parse_additive_op() {
+            let right = self.parse_multiplicative()?;
+            expr = Expression::BinaryOp {
+                left: Box::new(expr),
+                op,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_additive_op(&mut self) -> Option<BinaryOperator> {
+        if self.match_token(&[TokenKind::Plus]) {
+            Some(BinaryOperator::Add)
+        } else if self.match_token(&[TokenKind::Minus]) {
+            Some(BinaryOperator::Subtract)
+        } else {
+            None
+        }
+    }
+
+    fn parse_multiplicative(&mut self) -> ParseResult<Expression> {
+        let mut expr = self.parse_unary()?;
+
+        while let Some(op) = self.parse_multiplicative_op() {
+            let right = self.parse_unary()?;
+            expr = Expression::BinaryOp {
+                left: Box::new(expr),
+                op,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_multiplicative_op(&mut self) -> Option<BinaryOperator> {
+        if self.match_token(&[TokenKind::Star]) {
+            Some(BinaryOperator::Multiply)
+        } else if self.match_token(&[TokenKind::Slash]) {
+            Some(BinaryOperator::Divide)
+        } else if self.match_token(&[TokenKind::Percent]) {
+            Some(BinaryOperator::Modulo)
+        } else if self.match_token(&[TokenKind::Caret]) {
+            Some(BinaryOperator::Power)
+        } else {
+            None
+        }
+    }
+
+    fn parse_unary(&mut self) -> ParseResult<Expression> {
+        if self.match_token(&[TokenKind::Not]) {
+            let operand = self.parse_unary()?;
+            return Ok(Expression::UnaryOp {
+                op: UnaryOperator::Not,
+                operand: Box::new(operand),
+            });
+        }
+
+        if self.match_token(&[TokenKind::Minus]) {
+            let operand = self.parse_unary()?;
+            return Ok(Expression::UnaryOp {
+                op: UnaryOperator::Minus,
+                operand: Box::new(operand),
+            });
+        }
+
+        self.parse_postfix()
+    }
+
+    fn parse_postfix(&mut self) -> ParseResult<Expression> {
+        let mut expr = self.parse_primary()?;
+
+        loop {
+            if self.match_token(&[TokenKind::Dot]) {
+                if let TokenKind::Identifier(prop) = &self.peek().kind {
+                    let prop = prop.clone();
+                    self.advance();
+                    expr = Expression::Property {
+                        object: Box::new(expr),
+                        property: prop,
+                    };
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_primary(&mut self) -> ParseResult<Expression> {
+        match &self.peek().kind.clone() {
+            TokenKind::Integer(n) => {
+                let n = *n;
+                self.advance();
+                Ok(Expression::Integer(n))
+            }
+            TokenKind::Float(n) => {
+                let n = *n;
+                self.advance();
+                Ok(Expression::Float(n))
+            }
+            TokenKind::String(s) => {
+                let s = s.clone();
+                self.advance();
+                Ok(Expression::String(s))
+            }
+            TokenKind::True => {
+                self.advance();
+                Ok(Expression::Boolean(true))
+            }
+            TokenKind::False => {
+                self.advance();
+                Ok(Expression::Boolean(false))
+            }
+            TokenKind::Null => {
+                self.advance();
+                Ok(Expression::Null)
+            }
+            TokenKind::Identifier(name) => {
+                let name = name.clone();
+                self.advance();
+
+                // Check for function call
+                if self.match_token(&[TokenKind::LeftParen]) {
+                    self.parse_function_call(name)
+                } else {
+                    Ok(Expression::Variable(name))
+                }
+            }
+            TokenKind::LeftParen => {
+                self.advance();
+                let expr = self.parse_expression()?;
+                self.consume(TokenKind::RightParen, ")")?;
+                Ok(expr)
+            }
+            TokenKind::LeftBracket => {
+                self.advance();
+                let mut items = vec![];
+
+                if !self.check(&TokenKind::RightBracket) {
+                    loop {
+                        items.push(self.parse_expression()?);
+                        if !self.match_token(&[TokenKind::Comma]) {
+                            break;
+                        }
+                    }
+                }
+
+                self.consume(TokenKind::RightBracket, "]")?;
+                Ok(Expression::List(items))
+            }
+            _ => {
+                let token = self.peek();
+                Err(ParseError::UnexpectedToken {
+                    expected: "expression".to_string(),
+                    found: token.kind.to_string(),
+                    line: token.position.line,
+                    column: token.position.column,
+                })
+            }
+        }
+    }
+
+    fn parse_function_call(&mut self, name: String) -> ParseResult<Expression> {
+        let mut args = vec![];
+
+        if !self.check(&TokenKind::RightParen) {
+            // Check for DISTINCT in aggregation
+            let distinct = self.match_token(&[TokenKind::Distinct]);
+
+            loop {
+                args.push(self.parse_expression()?);
+                if !self.match_token(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+
+            // Check if it's an aggregation function
+            let agg_func = match name.to_uppercase().as_str() {
+                "COUNT" => Some(AggregationFunction::Count),
+                "SUM" => Some(AggregationFunction::Sum),
+                "AVG" => Some(AggregationFunction::Avg),
+                "MIN" => Some(AggregationFunction::Min),
+                "MAX" => Some(AggregationFunction::Max),
+                "COLLECT" => Some(AggregationFunction::Collect),
+                _ => None,
+            };
+
+            self.consume(TokenKind::RightParen, ")")?;
+
+            if let Some(func) = agg_func {
+                if args.len() != 1 {
+                    return Err(ParseError::InvalidSyntax(
+                        "Aggregation function requires exactly one argument".to_string(),
+                    ));
+                }
+                return Ok(Expression::Aggregation {
+                    function: func,
+                    expression: Box::new(args.into_iter().next().unwrap()),
+                    distinct,
+                });
+            }
+        } else {
+            self.consume(TokenKind::RightParen, ")")?;
+        }
+
+        Ok(Expression::FunctionCall { name, args })
+    }
+}
+
+/// Parse a Cypher query string into an AST
+pub fn parse_cypher(input: &str) -> ParseResult<Query> {
+    let tokens = tokenize(input)?;
+    let mut parser = Parser::new(tokens);
+    parser.parse_query()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_simple_match() {
+        let query = "MATCH (n:Person) RETURN n";
+        let result = parse_cypher(query);
+        assert!(result.is_ok());
+
+        let ast = result.unwrap();
+        assert_eq!(ast.statements.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_match_with_where() {
+        let query = "MATCH (n:Person) WHERE n.age > 30 RETURN n.name";
+        let result = parse_cypher(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_relationship() {
+        let query = "MATCH (a:Person)-[r:KNOWS]->(b:Person) RETURN a, r, b";
+        let result = parse_cypher(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_create() {
+        let query = "CREATE (n:Person {name: 'Alice', age: 30})";
+        let result = parse_cypher(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_hyperedge() {
+        let query = "MATCH (a)-[r:TRANSACTION]->(b, c, d) RETURN a, r, b, c, d";
+        let result = parse_cypher(query);
+        assert!(result.is_ok());
+
+        let ast = result.unwrap();
+        assert!(ast.has_hyperedges());
+    }
+
+    #[test]
+    fn test_parse_aggregation() {
+        let query = "MATCH (n:Person) RETURN COUNT(n), AVG(n.age)";
+        let result = parse_cypher(query);
+        assert!(result.is_ok());
+    }
+}

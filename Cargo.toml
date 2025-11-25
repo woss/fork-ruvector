@@ -20,6 +20,9 @@ members = [
     "crates/ruvector-cluster",
     "crates/ruvector-raft",
     "crates/ruvector-replication",
+    "crates/ruvector-graph",
+    "crates/ruvector-graph-node",
+    "crates/ruvector-graph-wasm",
 ]
 resolver = "2"
 
