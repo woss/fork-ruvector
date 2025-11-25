@@ -78,6 +78,7 @@ jobs:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Find built .node files (debug)
+        shell: bash
         run: |
           echo "=== Searching entire workspace for .node files ==="
           find . -name "*.node" -type f 2>/dev/null || true
