@@ -285,6 +285,10 @@ cargo add ruvector-scipix
 # CLI usage
 scipix-cli ocr --input equation.png --format latex
 scipix-cli serve --port 3000
+
+# MCP server for Claude/AI assistants
+scipix-cli mcp
+claude mcp add scipix -- scipix-cli mcp
 ```
 
 ### Bindings & Tools
