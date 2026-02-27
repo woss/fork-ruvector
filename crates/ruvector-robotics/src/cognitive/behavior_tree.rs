@@ -93,8 +93,11 @@ impl BehaviorTree {
     /// Tick the tree once, returning the root status.
     pub fn tick(&mut self) -> BehaviorStatus {
         self.context.tick_count += 1;
-        let root = self.root.clone();
-        Self::eval(&root, &mut self.context)
+        // SAFETY: We split the borrow — `eval` reads `root` immutably and
+        // mutates `context`.  Taking a raw pointer avoids cloning the entire
+        // tree on every tick.
+        let root_ptr: *const BehaviorNode = &self.root;
+        eval(unsafe { &*root_ptr }, &mut self.context)
     }
 
     /// Reset the context (tick count, blackboard, etc.).
@@ -119,101 +122,115 @@ impl BehaviorTree {
         &self.context
     }
 
-    // -- internal recursive evaluator --------------------------------------
+    /// Read-only reference to the root node.
+    pub fn root(&self) -> &BehaviorNode {
+        &self.root
+    }
+}
 
-    fn eval(node: &BehaviorNode, ctx: &mut BehaviorContext) -> BehaviorStatus {
-        match node {
-            BehaviorNode::Action(name) => ctx
-                .action_results
-                .get(name)
-                .copied()
-                .unwrap_or(BehaviorStatus::Failure),
+/// Maximum iterations for `UntilFail` before returning `Running` as a safety
+/// guard against infinite loops when the child always succeeds.
+const UNTIL_FAIL_MAX_ITERATIONS: usize = 10_000;
 
-            BehaviorNode::Condition(name) => {
-                if ctx.conditions.get(name).copied().unwrap_or(false) {
-                    BehaviorStatus::Success
-                } else {
-                    BehaviorStatus::Failure
-                }
-            }
+// Free functions that borrow the tree and context independently, avoiding the
+// need to clone the tree on every tick.
 
-            BehaviorNode::Sequence(children) => {
-                for child in children {
-                    match Self::eval(child, ctx) {
-                        BehaviorStatus::Success => continue,
-                        other => return other,
-                    }
-                }
+fn eval(node: &BehaviorNode, ctx: &mut BehaviorContext) -> BehaviorStatus {
+    match node {
+        BehaviorNode::Action(name) => ctx
+            .action_results
+            .get(name)
+            .copied()
+            .unwrap_or(BehaviorStatus::Failure),
+
+        BehaviorNode::Condition(name) => {
+            if ctx.conditions.get(name).copied().unwrap_or(false) {
                 BehaviorStatus::Success
-            }
-
-            BehaviorNode::Selector(children) => {
-                for child in children {
-                    match Self::eval(child, ctx) {
-                        BehaviorStatus::Failure => continue,
-                        other => return other,
-                    }
-                }
+            } else {
                 BehaviorStatus::Failure
             }
+        }
 
-            BehaviorNode::Decorator(dtype, child) => Self::eval_decorator(dtype, child, ctx),
+        BehaviorNode::Sequence(children) => {
+            for child in children {
+                match eval(child, ctx) {
+                    BehaviorStatus::Success => continue,
+                    other => return other,
+                }
+            }
+            BehaviorStatus::Success
+        }
 
-            BehaviorNode::Parallel(threshold, children) => {
-                let mut success_count = 0usize;
-                let mut any_running = false;
-                for child in children {
-                    match Self::eval(child, ctx) {
-                        BehaviorStatus::Success => success_count += 1,
-                        BehaviorStatus::Running => any_running = true,
-                        BehaviorStatus::Failure => {}
-                    }
+        BehaviorNode::Selector(children) => {
+            for child in children {
+                match eval(child, ctx) {
+                    BehaviorStatus::Failure => continue,
+                    other => return other,
                 }
-                if success_count >= *threshold {
-                    BehaviorStatus::Success
-                } else if any_running {
-                    BehaviorStatus::Running
-                } else {
-                    BehaviorStatus::Failure
+            }
+            BehaviorStatus::Failure
+        }
+
+        BehaviorNode::Decorator(dtype, child) => eval_decorator(dtype, child, ctx),
+
+        BehaviorNode::Parallel(threshold, children) => {
+            let mut success_count = 0usize;
+            let mut any_running = false;
+            for child in children {
+                match eval(child, ctx) {
+                    BehaviorStatus::Success => success_count += 1,
+                    BehaviorStatus::Running => any_running = true,
+                    BehaviorStatus::Failure => {}
                 }
+            }
+            if success_count >= *threshold {
+                BehaviorStatus::Success
+            } else if any_running {
+                BehaviorStatus::Running
+            } else {
+                BehaviorStatus::Failure
             }
         }
     }
+}
 
-    fn eval_decorator(
-        dtype: &DecoratorType,
-        child: &BehaviorNode,
-        ctx: &mut BehaviorContext,
-    ) -> BehaviorStatus {
-        match dtype {
-            DecoratorType::Inverter => match Self::eval(child, ctx) {
-                BehaviorStatus::Success => BehaviorStatus::Failure,
-                BehaviorStatus::Failure => BehaviorStatus::Success,
-                BehaviorStatus::Running => BehaviorStatus::Running,
-            },
-            DecoratorType::Repeat(n) => {
-                for _ in 0..*n {
-                    match Self::eval(child, ctx) {
-                        BehaviorStatus::Failure => return BehaviorStatus::Failure,
-                        BehaviorStatus::Running => return BehaviorStatus::Running,
-                        BehaviorStatus::Success => {}
-                    }
+fn eval_decorator(
+    dtype: &DecoratorType,
+    child: &BehaviorNode,
+    ctx: &mut BehaviorContext,
+) -> BehaviorStatus {
+    match dtype {
+        DecoratorType::Inverter => match eval(child, ctx) {
+            BehaviorStatus::Success => BehaviorStatus::Failure,
+            BehaviorStatus::Failure => BehaviorStatus::Success,
+            BehaviorStatus::Running => BehaviorStatus::Running,
+        },
+        DecoratorType::Repeat(n) => {
+            for _ in 0..*n {
+                match eval(child, ctx) {
+                    BehaviorStatus::Failure => return BehaviorStatus::Failure,
+                    BehaviorStatus::Running => return BehaviorStatus::Running,
+                    BehaviorStatus::Success => {}
                 }
-                BehaviorStatus::Success
             }
-            DecoratorType::UntilFail => loop {
-                match Self::eval(child, ctx) {
+            BehaviorStatus::Success
+        }
+        DecoratorType::UntilFail => {
+            for _ in 0..UNTIL_FAIL_MAX_ITERATIONS {
+                match eval(child, ctx) {
                     BehaviorStatus::Failure => return BehaviorStatus::Success,
                     BehaviorStatus::Running => return BehaviorStatus::Running,
                     BehaviorStatus::Success => continue,
                 }
-            },
-            DecoratorType::Timeout(max_ticks) => {
-                if ctx.tick_count > *max_ticks {
-                    return BehaviorStatus::Failure;
-                }
-                Self::eval(child, ctx)
             }
+            // Safety: child never failed within the iteration budget.
+            BehaviorStatus::Running
+        }
+        DecoratorType::Timeout(max_ticks) => {
+            if ctx.tick_count > *max_ticks {
+                return BehaviorStatus::Failure;
+            }
+            eval(child, ctx)
         }
     }
 }

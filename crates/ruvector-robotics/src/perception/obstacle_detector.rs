@@ -3,9 +3,8 @@
 //! Uses spatial-hash clustering to group nearby points into obstacle
 //! candidates, then filters and classifies them based on geometry.
 
-use std::collections::HashMap;
-
 use crate::bridge::{Point3D, PointCloud};
+use crate::perception::clustering;
 use crate::perception::config::ObstacleConfig;
 
 // ---------------------------------------------------------------------------
@@ -80,7 +79,7 @@ impl ObstacleDetector {
         }
 
         let cell_size = (self.config.safety_margin * 5.0).max(0.5);
-        let clusters = self.cluster_points(cloud, cell_size);
+        let clusters = clustering::cluster_point_cloud(cloud, cell_size);
 
         let mut obstacles: Vec<DetectedObstacle> = clusters
             .into_iter()
@@ -123,84 +122,6 @@ impl ObstacleDetector {
     }
 
     // -- private helpers ----------------------------------------------------
-
-    /// Spatial-hash clustering: assign every point to a grid cell, then
-    /// merge neighbouring cells via union-find.
-    fn cluster_points(
-        &self,
-        cloud: &PointCloud,
-        cell_size: f64,
-    ) -> Vec<Vec<Point3D>> {
-        // Map each point to a grid cell.
-        let mut cell_map: HashMap<(i64, i64, i64), Vec<usize>> = HashMap::new();
-
-        for (idx, p) in cloud.points.iter().enumerate() {
-            let key = Self::cell_key(p, cell_size);
-            cell_map.entry(key).or_default().push(idx);
-        }
-
-        // Union-find over cells.
-        let cells: Vec<(i64, i64, i64)> = cell_map.keys().copied().collect();
-        let cell_count = cells.len();
-        let cell_idx: HashMap<(i64, i64, i64), usize> = cells
-            .iter()
-            .enumerate()
-            .map(|(i, &k)| (k, i))
-            .collect();
-
-        let mut parent: Vec<usize> = (0..cell_count).collect();
-
-        for &(cx, cy, cz) in &cells {
-            let a = cell_idx[&(cx, cy, cz)];
-            for dx in -1..=1_i64 {
-                for dy in -1..=1_i64 {
-                    for dz in -1..=1_i64 {
-                        let neighbor = (cx + dx, cy + dy, cz + dz);
-                        if let Some(&b) = cell_idx.get(&neighbor) {
-                            Self::union(&mut parent, a, b);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Group points by root.
-        let mut groups: HashMap<usize, Vec<Point3D>> = HashMap::new();
-        for (cell_key, point_indices) in &cell_map {
-            let ci = cell_idx[cell_key];
-            let root = Self::find(&mut parent, ci);
-            let entry = groups.entry(root).or_default();
-            for &pi in point_indices {
-                entry.push(cloud.points[pi]);
-            }
-        }
-
-        groups.into_values().collect()
-    }
-
-    fn cell_key(p: &Point3D, cell_size: f64) -> (i64, i64, i64) {
-        (
-            (p.x as f64 / cell_size).floor() as i64,
-            (p.y as f64 / cell_size).floor() as i64,
-            (p.z as f64 / cell_size).floor() as i64,
-        )
-    }
-
-    fn find(parent: &mut [usize], mut i: usize) -> usize {
-        while parent[i] != i {
-            parent[i] = parent[parent[i]]; // path compression
-            i = parent[i];
-        }
-        i
-    }
-
-    fn union(parent: &mut [usize], a: usize, b: usize) {
-        let ra = Self::find(parent, a);
-        let rb = Self::find(parent, b);
-        if ra != rb {
-            parent[ra] = rb;
-        }
-    }
 
     fn cluster_to_obstacle(
         &self,

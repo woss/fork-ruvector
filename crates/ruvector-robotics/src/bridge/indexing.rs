@@ -10,7 +10,33 @@ use crate::bridge::PointCloud;
 #[cfg(test)]
 use crate::bridge::Point3D;
 
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 use std::fmt;
+
+/// Entry for the max-heap used by kNN search.
+#[derive(PartialEq)]
+struct MaxDistEntry {
+    index: usize,
+    distance: f32,
+}
+
+impl Eq for MaxDistEntry {}
+
+impl PartialOrd for MaxDistEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for MaxDistEntry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Reverse: larger distance = higher priority in the max-heap.
+        self.distance
+            .partial_cmp(&other.distance)
+            .unwrap_or(Ordering::Equal)
+    }
+}
 
 /// Errors returned by [`SpatialIndex`] operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,6 +136,7 @@ impl SpatialIndex {
     /// Find the `k` nearest neighbours to `query`.
     ///
     /// Returns `(index, distance)` pairs sorted by ascending distance.
+    /// Uses a max-heap of size `k` for O(n log k) instead of O(n log n).
     pub fn search_nearest(
         &self,
         query: &[f32],
@@ -124,15 +151,30 @@ impl SpatialIndex {
                 got: query.len(),
             });
         }
-        let mut scored: Vec<(usize, f32)> = self
-            .points
-            .iter()
-            .enumerate()
-            .map(|(i, p)| (i, self.compute_distance(query, p)))
+
+        // Max-heap: keeps the k closest points seen so far. The heap root is
+        // the *farthest* of the k candidates, so we can cheaply reject points
+        // that are further away.
+        let mut heap: BinaryHeap<MaxDistEntry> = BinaryHeap::with_capacity(k + 1);
+
+        for (i, p) in self.points.iter().enumerate() {
+            let d = self.compute_distance(query, p);
+            if heap.len() < k {
+                heap.push(MaxDistEntry { index: i, distance: d });
+            } else if let Some(top) = heap.peek() {
+                if d < top.distance {
+                    heap.pop();
+                    heap.push(MaxDistEntry { index: i, distance: d });
+                }
+            }
+        }
+
+        let mut result: Vec<(usize, f32)> = heap
+            .into_iter()
+            .map(|e| (e.index, e.distance))
             .collect();
-        scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.truncate(k);
-        Ok(scored)
+        result.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+        Ok(result)
     }
 
     /// Find all points within `radius` of `center`.

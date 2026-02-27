@@ -57,7 +57,7 @@ pub struct PerceptionPipeline {
     config: PipelineConfig,
     index: SpatialIndex,
     stats: PipelineStats,
-    /// Positions from previous frames for trajectory prediction.
+    /// Positions from previous frames for trajectory prediction (capped at 1000).
     position_history: Vec<[f64; 3]>,
     last_timestamp: i64,
     obstacle_counter: u64,
@@ -99,6 +99,10 @@ impl PerceptionPipeline {
         // -- 4. Trajectory prediction ----------------------------------------
         let trajectory_prediction = if self.config.track_trajectories {
             if let Some(pos) = robot_pos {
+                // Cap history to prevent unbounded memory growth.
+                if self.position_history.len() >= 1000 {
+                    self.position_history.drain(..500);
+                }
                 self.position_history.push(pos);
                 self.predict_trajectory(frame.timestamp_us)
             } else {

@@ -4,7 +4,7 @@
 //! simple majority consensus for distributed decision making.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // ---------------------------------------------------------------------------
 // Formation
@@ -136,7 +136,7 @@ impl SwarmCoordinator {
         let mut sorted_tasks: Vec<&SwarmTask> = tasks.iter().collect();
         sorted_tasks.sort_by(|a, b| b.priority.cmp(&a.priority));
 
-        let mut assigned_robots: Vec<u64> = Vec::new();
+        let mut assigned_robots: HashSet<u64> = HashSet::new();
         let mut assignments = Vec::new();
 
         for task in &sorted_tasks {
@@ -165,7 +165,7 @@ impl SwarmCoordinator {
                         task_id: task.id,
                         estimated_completion: est,
                     });
-                    assigned_robots.push(*id);
+                    assigned_robots.insert(*id);
                     break;
                 }
             }

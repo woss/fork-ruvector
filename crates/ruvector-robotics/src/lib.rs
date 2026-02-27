@@ -33,6 +33,12 @@ pub mod cognitive;
 pub mod mcp;
 pub mod perception;
 
+/// Cross-domain transfer learning integration with `ruvector-domain-expansion`.
+///
+/// Requires the `domain-expansion` feature flag.
+#[cfg(feature = "domain-expansion")]
+pub mod domain_expansion;
+
 // Convenience re-exports of the most commonly used types.
 pub use bridge::{
     BridgeConfig, DistanceMetric, OccupancyGrid, Obstacle as BridgeObstacle, Point3D, PointCloud,

@@ -210,12 +210,20 @@ impl OccupancyGrid {
         }
     }
 
-    pub fn get(&self, x: usize, y: usize) -> f32 {
-        self.data[y * self.width + x]
+    /// Get the occupancy value at `(x, y)`, or `None` if out of bounds.
+    pub fn get(&self, x: usize, y: usize) -> Option<f32> {
+        if x < self.width && y < self.height {
+            Some(self.data[y * self.width + x])
+        } else {
+            None
+        }
     }
 
+    /// Set the occupancy value at `(x, y)`. Out-of-bounds writes are ignored.
     pub fn set(&mut self, x: usize, y: usize, value: f32) {
-        self.data[y * self.width + x] = value;
+        if x < self.width && y < self.height {
+            self.data[y * self.width + x] = value;
+        }
     }
 }
 
@@ -274,14 +282,6 @@ impl SceneGraph {
     pub fn new(objects: Vec<SceneObject>, edges: Vec<SceneEdge>, timestamp: i64) -> Self {
         Self { objects, edges, timestamp }
     }
-}
-
-/// A waypoint along a trajectory.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TrajectoryPoint {
-    pub position: [f64; 3],
-    pub velocity: [f64; 3],
-    pub timestamp_us: i64,
 }
 
 /// A predicted trajectory consisting of waypoints.
@@ -388,7 +388,8 @@ mod tests {
     fn test_occupancy_grid() {
         let mut grid = OccupancyGrid::new(10, 10, 0.05);
         grid.set(3, 4, 0.8);
-        assert!((grid.get(3, 4) - 0.8).abs() < f32::EPSILON);
+        assert!((grid.get(3, 4).unwrap() - 0.8).abs() < f32::EPSILON);
+        assert!(grid.get(10, 10).is_none()); // out of bounds
     }
 
     #[test]

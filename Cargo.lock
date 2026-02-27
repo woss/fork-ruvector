@@ -9027,10 +9027,10 @@ version = "0.1.0"
 dependencies = [
  "criterion 0.5.1",
  "rand 0.8.5",
+ "ruvector-domain-expansion",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "tracing",
 ]
 
 [[package]]

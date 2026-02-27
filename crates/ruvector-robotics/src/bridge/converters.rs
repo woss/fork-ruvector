@@ -126,7 +126,7 @@ pub fn occupancy_grid_to_vectors(grid: &OccupancyGrid) -> Vec<Vec<f32>> {
     let mut result = Vec::new();
     for y in 0..grid.height {
         for x in 0..grid.width {
-            let val = grid.get(x, y);
+            let val = grid.get(x, y).unwrap_or(0.0);
             if val > 0.5 {
                 let wx = grid.origin[0] as f32 + x as f32 * grid.resolution as f32;
                 let wy = grid.origin[1] as f32 + y as f32 * grid.resolution as f32;

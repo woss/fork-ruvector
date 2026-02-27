@@ -46,8 +46,20 @@ impl SkillLibrary {
     /// Learn a skill from one or more demonstrations by averaging their
     /// trajectories point-by-point. The resulting trajectory length equals
     /// the shortest demonstration.
+    /// # Panics
+    ///
+    /// Returns early with a zero-confidence skill if `demos` is empty.
     pub fn learn_from_demonstration(&mut self, name: &str, demos: &[Demonstration]) -> Skill {
-        assert!(!demos.is_empty(), "at least one demonstration required");
+        if demos.is_empty() {
+            let skill = Skill {
+                name: name.to_string(),
+                trajectory: Vec::new(),
+                confidence: 0.0,
+                execution_count: 0,
+            };
+            self.skills.insert(name.to_string(), skill.clone());
+            return skill;
+        }
 
         let min_len = demos.iter().map(|d| d.trajectory.len()).min().unwrap_or(0);
 

@@ -83,7 +83,7 @@ fn test_bridge_types_roundtrip() {
     grid.set(2, 2, 0.9);
     let json = serde_json::to_string(&grid).unwrap();
     let grid2: OccupancyGrid = serde_json::from_str(&json).unwrap();
-    assert!((grid2.get(2, 2) - 0.9).abs() < f32::EPSILON);
+    assert!((grid2.get(2, 2).unwrap() - 0.9).abs() < f32::EPSILON);
 }
 
 // ---------------------------------------------------------------------------

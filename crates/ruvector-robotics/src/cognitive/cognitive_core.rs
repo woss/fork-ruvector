@@ -5,6 +5,7 @@
 //! incorporating feedback to improve future decisions.
 
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -108,7 +109,7 @@ impl Default for CognitiveConfig {
 pub struct CognitiveCore {
     state: CognitiveState,
     config: CognitiveConfig,
-    percept_buffer: Vec<Percept>,
+    percept_buffer: VecDeque<Percept>,
     decision_history: Vec<Decision>,
     cumulative_reward: f64,
 }
@@ -119,7 +120,7 @@ impl CognitiveCore {
         Self {
             state: CognitiveState::Idle,
             config,
-            percept_buffer: Vec::new(),
+            percept_buffer: VecDeque::new(),
             decision_history: Vec::new(),
             cumulative_reward: 0.0,
         }
@@ -137,9 +138,9 @@ impl CognitiveCore {
         }
 
         if self.percept_buffer.len() >= self.config.max_percepts {
-            self.percept_buffer.remove(0);
+            self.percept_buffer.pop_front(); // O(1) with VecDeque
         }
-        self.percept_buffer.push(percept);
+        self.percept_buffer.push_back(percept);
         self.state
     }
 

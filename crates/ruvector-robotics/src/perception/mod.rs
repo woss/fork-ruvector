@@ -3,6 +3,7 @@
 //! This module sits on top of [`crate::bridge`] types and provides higher-level
 //! perception building blocks used by the cognitive architecture.
 
+pub mod clustering;
 pub mod config;
 pub mod obstacle_detector;
 pub mod scene_graph;
@@ -10,6 +11,8 @@ pub mod scene_graph;
 pub use config::{ObstacleConfig, PerceptionConfig, SceneGraphConfig};
 pub use obstacle_detector::{ClassifiedObstacle, DetectedObstacle, ObstacleClass, ObstacleDetector};
 pub use scene_graph::PointCloudSceneGraphBuilder;
+
+use serde::{Deserialize, Serialize};
 
 use crate::bridge::{
     Obstacle, Point3D, PointCloud, SceneEdge, SceneGraph, SceneObject, Trajectory,
@@ -36,7 +39,7 @@ pub type Result<T> = std::result::Result<T, PerceptionError>;
 // ---------------------------------------------------------------------------
 
 /// A point-cloud anomaly detected via z-score outlier analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Anomaly {
     pub position: [f64; 3],
     pub score: f64,
@@ -248,7 +251,7 @@ impl PerceptionPipeline {
         }
 
         let cell_size = self.obstacle_threshold.max(0.1);
-        let clusters = Self::cluster_points(cloud, cell_size);
+        let clusters = clustering::cluster_point_cloud(cloud, cell_size);
 
         let mut obstacles: Vec<Obstacle> = Vec::new();
         let mut next_id: u64 = 0;
@@ -469,69 +472,6 @@ impl PerceptionPipeline {
     }
 
     // -- private helpers ----------------------------------------------------
-
-    fn cluster_points(cloud: &PointCloud, cell_size: f64) -> Vec<Vec<Point3D>> {
-        use std::collections::HashMap;
-
-        let mut cell_map: HashMap<(i64, i64, i64), Vec<usize>> = HashMap::new();
-        for (idx, p) in cloud.points.iter().enumerate() {
-            let key = (
-                (p.x as f64 / cell_size).floor() as i64,
-                (p.y as f64 / cell_size).floor() as i64,
-                (p.z as f64 / cell_size).floor() as i64,
-            );
-            cell_map.entry(key).or_default().push(idx);
-        }
-
-        let cells: Vec<(i64, i64, i64)> = cell_map.keys().copied().collect();
-        let cell_count = cells.len();
-        let cell_idx: HashMap<(i64, i64, i64), usize> =
-            cells.iter().enumerate().map(|(i, &k)| (k, i)).collect();
-
-        let mut parent: Vec<usize> = (0..cell_count).collect();
-
-        for &(gx, gy, gz) in &cells {
-            let a = cell_idx[&(gx, gy, gz)];
-            for dx in -1..=1_i64 {
-                for dy in -1..=1_i64 {
-                    for dz in -1..=1_i64 {
-                        let nb = (gx + dx, gy + dy, gz + dz);
-                        if let Some(&b) = cell_idx.get(&nb) {
-                            Self::uf_union(&mut parent, a, b);
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut groups: HashMap<usize, Vec<Point3D>> = HashMap::new();
-        for (cell_key, point_indices) in &cell_map {
-            let ci = cell_idx[cell_key];
-            let root = Self::uf_find(&mut parent, ci);
-            let entry = groups.entry(root).or_default();
-            for &pi in point_indices {
-                entry.push(cloud.points[pi]);
-            }
-        }
-
-        groups.into_values().collect()
-    }
-
-    fn uf_find(parent: &mut [usize], mut i: usize) -> usize {
-        while parent[i] != i {
-            parent[i] = parent[parent[i]];
-            i = parent[i];
-        }
-        i
-    }
-
-    fn uf_union(parent: &mut [usize], a: usize, b: usize) {
-        let ra = Self::uf_find(parent, a);
-        let rb = Self::uf_find(parent, b);
-        if ra != rb {
-            parent[ra] = rb;
-        }
-    }
 
     fn bounding_sphere(points: &[Point3D]) -> ([f64; 3], f64) {
         let n = points.len() as f64;

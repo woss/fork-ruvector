@@ -5,12 +5,16 @@ edition = "2021"
 license = "MIT"
 description = "Cognitive robotics platform: bridge types, perception pipeline, cognitive architecture, and MCP tools"
 
+[features]
+default = []
+domain-expansion = ["dep:ruvector-domain-expansion", "dep:rand"]
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
-tracing = "0.1"
-rand = "0.8"
+ruvector-domain-expansion = { path = "../ruvector-domain-expansion", optional = true }
+rand = { version = "0.8", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
