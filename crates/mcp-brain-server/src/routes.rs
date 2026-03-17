@@ -2993,45 +2993,40 @@ async fn pipeline_crawl_stats(
 async fn pipeline_crawl_test(
     State(state): State<AppState>,
 ) -> Json<serde_json::Value> {
-    let http = &state.crawl_adapter;
+    let adapter = &state.crawl_adapter;
     let test_url = "https://index.commoncrawl.org/collinfo.json";
 
+    // Test using our configured HTTP client (native-tls, HTTP/1.1)
     let start = std::time::Instant::now();
-    let result = match reqwest::get(test_url).await {
-        Ok(resp) => {
-            let status = resp.status().as_u16();
-            let body_len = resp.text().await.map(|b| b.len()).unwrap_or(0);
-            serde_json::json!({
-                "success": true,
-                "url": test_url,
-                "status": status,
-                "body_length": body_len,
-                "latency_ms": start.elapsed().as_millis(),
-            })
-        }
-        Err(e) => {
-            serde_json::json!({
-                "success": false,
-                "url": test_url,
-                "error": format!("{:?}", e),
-                "latency_ms": start.elapsed().as_millis(),
-            })
-        }
-    };
+    let (success, status, body_len, error) = adapter.test_connectivity().await;
+    let latency_ms = start.elapsed().as_millis();
 
-    // Also test with our configured client
-    let cc_test_url = "https://index.commoncrawl.org/CC-MAIN-2026-08-index?url=example.com&output=json&limit=1";
-    let cc_start = std::time::Instant::now();
-    let cc_result = match http.stats() {
-        (queries, _, _, _, _) => serde_json::json!({
-            "adapter_queries": queries,
-            "cache_stats": http.cache_stats(),
+    let result = if success {
+        serde_json::json!({
+            "success": true,
+            "url": test_url,
+            "status": status,
+            "body_length": body_len,
+            "latency_ms": latency_ms,
+        })
+    } else {
+        serde_json::json!({
+            "success": false,
+            "url": test_url,
+            "status": status,
+            "error": error,
+            "latency_ms": latency_ms,
         })
     };
 
+    let adapter_status = serde_json::json!({
+        "adapter_queries": adapter.stats().0,
+        "cache_stats": adapter.cache_stats(),
+    });
+
     Json(serde_json::json!({
         "connectivity_test": result,
-        "adapter_status": cc_result,
+        "adapter_status": adapter_status,
     }))
 }
 
