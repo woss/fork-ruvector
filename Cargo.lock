@@ -8998,6 +8998,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruvector-decompiler-wasm"
+version = "2.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "ruvector-decompiler",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "ruvector-delta-consensus"
 version = "0.1.0"
 dependencies = [
